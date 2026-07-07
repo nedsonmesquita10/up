@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Importador de Clientes — Supabase</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg:#0a0e14;
+    --panel:#10151f;
+    --panel-border:#1c2330;
+    --text:#e6ecf5;
+    --text-dim:#7c8aa3;
+    --blue:#4f8dfd;
+    --purple:#a374f2;
+    --green:#3ecf8e;
+    --amber:#f2b84b;
+    --red:#f2555a;
+    --mono: 'SF Mono', 'Consolas', 'Menlo', monospace;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    padding:32px 20px 80px;
+  }
+  .wrap{max-width:920px;margin:0 auto;}
+  header{margin-bottom:28px;}
+  header h1{font-size:22px;margin:0 0 6px;letter-spacing:.2px;}
+  header p{color:var(--text-dim);font-size:14px;margin:0;line-height:1.5;}
+
+  .card{
+    background:var(--panel);
+    border:1px solid var(--panel-border);
+    border-left:3px solid var(--accent, var(--blue));
+    border-radius:8px;
+    padding:20px 22px;
+    margin-bottom:18px;
+  }
+  .card h2{
+    font-size:13px;
+    text-transform:uppercase;
+    letter-spacing:.08em;
+    margin:0 0 14px;
+    color:var(--accent, var(--blue));
+    display:flex;align-items:center;gap:8px;
+  }
+  .card h2 .num{
+    background:var(--accent, var(--blue));
+    color:var(--bg);
+    width:18px;height:18px;
+    border-radius:4px;
+    display:inline-flex;align-items:center;justify-content:center;
+    font-size:11px;font-weight:700;
+  }
+
+  #card-template{--accent:var(--blue);}
+  #card-config{--accent:var(--purple);}
+  #card-upload{--accent:var(--amber);}
+  #card-send{--accent:var(--green);}
+
+  label{display:block;font-size:12px;color:var(--text-dim);margin-bottom:5px;margin-top:12px;}
+  label:first-child{margin-top:0;}
+  input[type=text], input[type=password], select{
+    width:100%;
+    background:#0d121b;
+    border:1px solid var(--panel-border);
+    color:var(--text);
+    padding:9px 11px;
+    border-radius:6px;
+    font-size:13px;
+    font-family:var(--mono);
+  }
+  input:focus, select:focus{outline:1px solid var(--accent, var(--blue));}
+
+  .row{display:flex;gap:14px;flex-wrap:wrap;}
+  .row > div{flex:1;min-width:180px;}
+
+  button{
+    font-family:inherit;
+    font-size:13px;
+    font-weight:600;
+    border:none;
+    border-radius:6px;
+    padding:10px 16px;
+    cursor:pointer;
+    transition:opacity .15s;
+  }
+  button:hover{opacity:.85;}
+  button:disabled{opacity:.4;cursor:not-allowed;}
+  .btn-primary{background:var(--blue);color:#04070c;}
+  .btn-purple{background:var(--purple);color:#04070c;}
+  .btn-green{background:var(--green);color:#04070c;}
+  .btn-ghost{background:transparent;border:1px solid var(--panel-border);color:var(--text);}
+
+  .dropzone{
+    border:1.5px dashed var(--panel-border);
+    border-radius:8px;
+    padding:28px;
+    text-align:center;
+    color:var(--text-dim);
+    font-size:13px;
+    cursor:pointer;
+    transition:border-color .15s, background .15s;
+  }
+  .dropzone:hover, .dropzone.drag{border-color:var(--amber);background:#161c28;}
+  .dropzone input{display:none;}
+  .filename{color:var(--amber);font-family:var(--mono);font-size:12px;margin-top:8px;}
+
+  table{width:100%;border-collapse:collapse;font-size:12px;font-family:var(--mono);}
+  th,td{padding:6px 8px;text-align:left;border-bottom:1px solid var(--panel-border);white-space:nowrap;}
+  th{color:var(--text-dim);font-weight:600;position:sticky;top:0;background:var(--panel);}
+  td.err{color:var(--red);}
+  .table-scroll{overflow:auto;max-height:280px;border:1px solid var(--panel-border);border-radius:6px;margin-top:12px;}
+
+  .stats{display:flex;gap:18px;margin-top:14px;flex-wrap:wrap;}
+  .stat{background:#0d121b;border:1px solid var(--panel-border);border-radius:6px;padding:10px 14px;min-width:110px;}
+  .stat .n{font-size:20px;font-weight:700;font-family:var(--mono);}
+  .stat .l{font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em;}
+  .stat.ok .n{color:var(--green);}
+  .stat.warn .n{color:var(--amber);}
+  .stat.err .n{color:var(--red);}
+
+  .log{
+    font-family:var(--mono);
+    font-size:12px;
+    background:#0d121b;
+    border:1px solid var(--panel-border);
+    border-radius:6px;
+    padding:12px;
+    max-height:180px;
+    overflow-y:auto;
+    margin-top:12px;
+    white-space:pre-wrap;
+  }
+  .log .l-ok{color:var(--green);}
+  .log .l-err{color:var(--red);}
+  .log .l-info{color:var(--text-dim);}
+
+  .progress-track{background:#0d121b;border:1px solid var(--panel-border);border-radius:6px;height:8px;overflow:hidden;margin-top:12px;}
+  .progress-fill{background:var(--green);height:100%;width:0%;transition:width .2s;}
+
+  .hint{font-size:11.5px;color:var(--text-dim);margin-top:8px;line-height:1.5;}
+  .hint code{background:#0d121b;padding:1px 5px;border-radius:4px;color:var(--amber);}
+  .btn-row{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Importador de Clientes → Supabase</h1>
+    <p>Corrige CPF, margens e datas automaticamente e envia direto para sua tabela no Supabase.</p>
+  </header>
+
+  <!-- 1. TEMPLATE -->
+  <div class="card" id="card-template">
+    <h2><span class="num">1</span>Planilha modelo</h2>
+    <p class="hint" style="margin-top:0">Baixe o modelo com as colunas certas, preencha e depois anexe na etapa 3. As colunas <code>id</code> e <code>created_at</code> não entram, o Supabase preenche sozinho.</p>
+    <button class="btn-primary" onclick="downloadTemplate()">Baixar planilha modelo (.csv)</button>
+  </div>
+
+  <!-- 2. CONFIG -->
+  <div class="card" id="card-config">
+    <h2><span class="num">2</span>Conexão com o Supabase</h2>
+    <div class="row">
+      <div>
+        <label>URL do projeto</label>
+        <input type="text" id="cfgUrl" placeholder="https://xxxxxxxx.supabase.co">
+      </div>
+      <div>
+        <label>Nome da tabela</label>
+        <input type="text" id="cfgTable" value="clientes">
+      </div>
+    </div>
+    <label>API Key (anon ou service_role)</label>
+    <input type="password" id="cfgKey" placeholder="eyJhbGciOi...">
+    <label>Modo de envio</label>
+    <select id="cfgMode">
+      <option value="insert">Inserir (adiciona novas linhas, não mexe em duplicados)</option>
+      <option value="upsert">Atualizar por CPF (upsert — precisa de CPF único na tabela)</option>
+    </select>
+    <p class="hint">Para o modo "Atualizar por CPF" funcionar, a coluna <code>cpf</code> precisa ter uma restrição UNIQUE no Supabase. Se ainda não tiver, rode no SQL Editor:<br><code>alter table clientes add constraint clientes_cpf_key unique (cpf);</code></p>
+  </div>
+
+  <!-- 3. UPLOAD -->
+  <div class="card" id="card-upload">
+    <h2><span class="num">3</span>Anexar planilha</h2>
+    <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
+      <input type="file" id="fileInput" accept=".csv,.xlsx,.xls">
+      <div id="dropText">Clique aqui ou arraste sua planilha (.csv ou .xlsx)</div>
+      <div class="filename" id="fileName"></div>
+    </div>
+
+    <div id="previewArea" style="display:none">
+      <div class="stats">
+        <div class="stat ok"><div class="n" id="statTotal">0</div><div class="l">linhas lidas</div></div>
+        <div class="stat warn"><div class="n" id="statFixed">0</div><div class="l">campos corrigidos</div></div>
+        <div class="stat err"><div class="n" id="statErr">0</div><div class="l">linhas com problema</div></div>
+      </div>
+      <div class="table-scroll">
+        <table id="previewTable"></table>
+      </div>
+      <p class="hint">Prévia mostrando as primeiras 30 linhas já corrigidas (CPF com 11 dígitos, margens com ponto, data no formato AAAA-MM-DD). Linhas em vermelho têm algum problema e não serão enviadas.</p>
+    </div>
+  </div>
+
+  <!-- 4. SEND -->
+  <div class="card" id="card-send" style="display:none">
+    <h2><span class="num">4</span>Enviar para o Supabase</h2>
+    <div class="btn-row">
+      <button class="btn-green" id="btnSend" onclick="sendToSupabase()">Enviar linhas válidas</button>
+    </div>
+    <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="log" id="log"></div>
+  </div>
+
+</div>
+
+<script>
+const TEMPLATE_HEADERS = ["nome","cpf","convenio","cartao","margem_consignado","margem_cartao","margem_beneficio","matricula","telefone1","telefone2","telefone3","nascimento"];
+
+let rows = [];        // corrected rows, ready for supabase
+let rowErrors = [];   // parallel array of error strings (or null)
+
+function downloadTemplate(){
+  const exampleRow = ["João da Silva","12345678901","INSS","1234","1500,50","800,00","2200,75","987654","98988887777","","","15/03/1985"];
+  const csv = TEMPLATE_HEADERS.join(",") + "\n" + exampleRow.join(",") + "\n";
+  const blob = new Blob(["\uFEFF"+csv], {type:"text/csv;charset=utf-8;"});
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "planilha_modelo_clientes.csv";
+  link.click();
+}
+
+// ---------- correction helpers ----------
+function fixCPF(raw){
+  if(raw === null || raw === undefined) return {value:"", fixed:false};
+  let digits = String(raw).replace(/\D/g,"");
+  if(digits === "") return {value:"", fixed:false};
+  const fixed = digits.length < 11;
+  digits = digits.padStart(11,"0").slice(-11);
+  return {value:digits, fixed:fixed};
+}
+
+function fixMargin(raw){
+  if(raw === null || raw === undefined || String(raw).trim()==="") return {value:null, fixed:false};
+  let s = String(raw).trim();
+  const original = s;
+  s = s.replace(/\./g,"").replace(",",".");   // handles 1.234,56 -> 1234.56
+  // if there was no comma to begin with, and only a single dot already present as decimal, keep simpler parse
+  if(!original.includes(",") && (original.match(/\./g)||[]).length <= 1){
+    s = original;
+  }
+  const n = parseFloat(s);
+  if(isNaN(n)) return {value:null, fixed:false, error:true};
+  return {value:n, fixed: (original !== String(n))};
+}
+
+function fixDate(raw){
+  if(raw === null || raw === undefined || String(raw).trim()==="") return {value:null, fixed:false};
+  let s = String(raw).trim();
+  // already yyyy-mm-dd
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return {value:s, fixed:false};
+  // dd/mm/yyyy or dd-mm-yyyy
+  let m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if(m){
+    const dd = m[1].padStart(2,"0");
+    const mm = m[2].padStart(2,"0");
+    const yyyy = m[3];
+    return {value:`${yyyy}-${mm}-${dd}`, fixed:true};
+  }
+  // excel serial date number
+  if(/^\d+(\.\d+)?$/.test(s)){
+    const serial = parseFloat(s);
+    const d = new Date(Math.round((serial - 25569) * 86400 * 1000));
+    if(!isNaN(d.getTime())){
+      const yyyy = d.getUTCFullYear();
+      const mm = String(d.getUTCMonth()+1).padStart(2,"0");
+      const dd = String(d.getUTCDate()).padStart(2,"0");
+      return {value:`${yyyy}-${mm}-${dd}`, fixed:true};
+    }
+  }
+  return {value:s, fixed:false, error:true};
+}
+
+function normalizeKey(k){
+  return String(k).trim().toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+    .replace(/\s+/g,"_");
+}
+
+// ---------- file handling ----------
+const dropzone = document.getElementById("dropzone");
+const fileInput = document.getElementById("fileInput");
+
+dropzone.addEventListener("dragover", e=>{e.preventDefault(); dropzone.classList.add("drag");});
+dropzone.addEventListener("dragleave", ()=>dropzone.classList.remove("drag"));
+dropzone.addEventListener("drop", e=>{
+  e.preventDefault();
+  dropzone.classList.remove("drag");
+  if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener("change", e=>{
+  if(e.target.files.length) handleFile(e.target.files[0]);
+});
+
+function handleFile(file){
+  document.getElementById("fileName").textContent = file.name;
+  const ext = file.name.split(".").pop().toLowerCase();
+  if(ext === "csv"){
+    Papa.parse(file, {
+      header:true,
+      skipEmptyLines:true,
+      encoding:"UTF-8",
+      complete: res => processRawRows(res.data)
+    });
+  } else {
+    const reader = new FileReader();
+    reader.onload = evt => {
+      const wb = XLSX.read(evt.target.result, {type:"array", cellDates:false});
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const data = XLSX.utils.sheet_to_json(sheet, {defval:"", raw:false});
+      processRawRows(data);
+    };
+    reader.readAsArrayBuffer(file);
+  }
+}
+
+function processRawRows(rawRows){
+  rows = [];
+  rowErrors = [];
+  let fixedCount = 0;
+  let errCount = 0;
+
+  rawRows.forEach(raw => {
+    // normalize keys
+    const norm = {};
+    Object.keys(raw).forEach(k => norm[normalizeKey(k)] = raw[k]);
+
+    const out = {};
+    let rowFixed = false;
+    let rowError = null;
+
+    const cpfR = fixCPF(norm.cpf);
+    out.cpf = cpfR.value;
+    if(cpfR.fixed) rowFixed = true;
+    if(!out.cpf) rowError = "CPF vazio ou inválido";
+
+    out.nome = norm.nome ? String(norm.nome).trim() : "";
+    out.convenio = norm.convenio ? String(norm.convenio).trim() : "";
+    out.cartao = norm.cartao ? String(norm.cartao).trim() : "";
+    out.matricula = norm.matricula ? String(norm.matricula).trim() : "";
+    out.telefone1 = norm.telefone1 ? String(norm.telefone1).trim() : "";
+    out.telefone2 = norm.telefone2 ? String(norm.telefone2).trim() : "";
+    out.telefone3 = norm.telefone3 ? String(norm.telefone3).trim() : "";
+
+    ["margem_consignado","margem_cartao","margem_beneficio"].forEach(col=>{
+      const r = fixMargin(norm[col]);
+      out[col] = r.value;
+      if(r.fixed) rowFixed = true;
+      if(r.error) rowError = rowError || `${col} inválida`;
+    });
+
+    const d = fixDate(norm.nascimento);
+    out.nascimento = d.value;
+    if(d.fixed) rowFixed = true;
+    if(d.error) rowError = rowError || "data de nascimento inválida";
+
+    if(rowFixed) fixedCount++;
+    if(rowError) errCount++;
+
+    rows.push(out);
+    rowErrors.push(rowError);
+  });
+
+  document.getElementById("statTotal").textContent = rows.length;
+  document.getElementById("statFixed").textContent = fixedCount;
+  document.getElementById("statErr").textContent = errCount;
+
+  renderPreview();
+  document.getElementById("previewArea").style.display = "block";
+  document.getElementById("card-send").style.display = "block";
+}
+
+function renderPreview(){
+  const cols = ["nome","cpf","convenio","cartao","margem_consignado","margem_cartao","margem_beneficio","matricula","telefone1","nascimento"];
+  let html = "<tr>" + cols.map(c=>`<th>${c}</th>`).join("") + "<th>status</th></tr>";
+  rows.slice(0,30).forEach((r,i)=>{
+    const err = rowErrors[i];
+    html += "<tr>" + cols.map(c=>`<td class="${err?'err':''}">${r[c] ?? ""}</td>`).join("") + `<td class="${err?'err':''}">${err ? err : "ok"}</td></tr>`;
+  });
+  document.getElementById("previewTable").innerHTML = html;
+}
+
+// ---------- send to supabase ----------
+function log(msg, cls){
+  const el = document.getElementById("log");
+  const div = document.createElement("div");
+  div.className = cls || "l-info";
+  div.textContent = msg;
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+}
+
+async function sendToSupabase(){
+  const url = document.getElementById("cfgUrl").value.trim().replace(/\/+$/,"");
+  const key = document.getElementById("cfgKey").value.trim();
+  const table = document.getElementById("cfgTable").value.trim() || "clientes";
+  const mode = document.getElementById("cfgMode").value;
+
+  if(!url || !key){
+    alert("Preencha a URL do projeto e a API Key antes de enviar.");
+    return;
+  }
+  if(rows.length === 0){
+    alert("Anexe uma planilha primeiro.");
+    return;
+  }
+
+  const validRows = rows.filter((_,i)=>!rowErrors[i]);
+  if(validRows.length === 0){
+    alert("Nenhuma linha válida para enviar.");
+    return;
+  }
+
+  const btn = document.getElementById("btnSend");
+  btn.disabled = true;
+  document.getElementById("log").innerHTML = "";
+  log(`Enviando ${validRows.length} linhas válidas (modo: ${mode})...`, "l-info");
+
+  const batchSize = 300;
+  let sent = 0;
+  let failed = 0;
+
+  for(let i=0; i<validRows.length; i+=batchSize){
+    const batch = validRows.slice(i, i+batchSize);
+    let endpoint = `${url}/rest/v1/${table}`;
+    const headers = {
+      "apikey": key,
+      "Authorization": `Bearer ${key}`,
+      "Content-Type": "application/json"
+    };
+    if(mode === "upsert"){
+      endpoint += "?on_conflict=cpf";
+      headers["Prefer"] = "resolution=merge-duplicates,return=minimal";
+    } else {
+      headers["Prefer"] = "return=minimal";
+    }
+
+    try{
+      const resp = await fetch(endpoint, {
+        method:"POST",
+        headers,
+        body: JSON.stringify(batch)
+      });
+      if(resp.ok){
+        sent += batch.length;
+        log(`Lote ${Math.floor(i/batchSize)+1}: ${batch.length} linhas enviadas com sucesso.`, "l-ok");
+      } else {
+        const errText = await resp.text();
+        failed += batch.length;
+        log(`Lote ${Math.floor(i/batchSize)+1}: falhou (${resp.status}) — ${errText.slice(0,300)}`, "l-err");
+      }
+    } catch(e){
+      failed += batch.length;
+      log(`Lote ${Math.floor(i/batchSize)+1}: erro de rede — ${e.message}`, "l-err");
+    }
+
+    const pct = Math.round(((i+batch.length)/validRows.length)*100);
+    document.getElementById("progressFill").style.width = pct + "%";
+  }
+
+  log(`Concluído. ${sent} enviadas, ${failed} com falha.`, failed ? "l-err" : "l-ok");
+  btn.disabled = false;
+}
+</script>
+</body>
+</html>
